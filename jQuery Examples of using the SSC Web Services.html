@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<!-- saved from url=(0064)http://sscweb.gsfc.nasa.gov/WebServices/REST/jQueryExample2.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!--
+ * NOSA HEADER START
+ *
+ * The contents of this file are subject to the terms of the NASA Open
+ * Source Agreement (NOSA), Version 1.3 only (the "Agreement").  You may
+ * not use this file except in compliance with the Agreement.
+ *
+ * You can obtain a copy of the agreement at
+ *   docs/NASA_Open_Source_Agreement_1.3.txt
+ * or
+ *   http://sscweb.gsfc.nasa.gov/WebServices/NASA_Open_Source_Agreement_1.3.txt.
+ *
+ * See the Agreement for the specific language governing permissions
+ * and limitations under the Agreement.
+ *
+ * When distributing Covered Code, include this NOSA HEADER in each
+ * file and include the Agreement file at
+ * docs/NASA_Open_Source_Agreement_1.3.txt.  If applicable, add the
+ * following below this NOSA HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * NOSA HEADER END
+ *
+ * Copyright (c) 2012 United States Government as represented by
+ * the National Aeronautics and Space Administration. No copyright is
+ * claimed in the United States under Title 17, U.S.Code. All Other
+ * Rights Reserved.
+ *
+-->
+<title>jQuery Examples of using the SSC Web Services</title>
+<!--
+<script src="jquery.js"></script>
+-->
+<script src="./jQuery Examples of using the SSC Web Services_files/jquery-1.8.0.min.js"></script>
+<script src="./jQuery Examples of using the SSC Web Services_files/scenejs.js"></script>
+<!--
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js">
+</script>
+-->
+<script>
+var sscUrl='http://sscweb.gsfc.nasa.gov/WS/sscr/2';
+                                       // beginning part of URL for the
+                                       // SSC web services
+var timePattern='(\\d{4})-(\\d{2})-(\\d{2})([T\\s](\\d{2}))?(:(\\d{2}))?(:(\\d{2}))?(\\.(\\d{3}))?Z?';
+                                       // regular expression pattern for 
+                                       // an ISO 8601 time value
+var iso8601RegExp=new RegExp(timePattern);
+                                       // regular expression for an ISO 
+                                       // 8601 time value
+
+var dataReqXml1 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><DataRequest xmlns="http://sscweb.gsfc.nasa.gov/schema">';
+                                       // part 1 of a DataRequest
+var dataReqXml2 = '<BFieldModel><InternalBFieldModel>IGRF-10</InternalBFieldModel><ExternalBFieldModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Tsyganenko89cBFieldModel"><KeyParameterValues>KP3_3_3</KeyParameterValues></ExternalBFieldModel><TraceStopAltitude>100</TraceStopAltitude></BFieldModel>';                                     
+                                       // part 2 of a DataRequest
+var dataReqXml3 = '<OutputOptions><AllLocationFilters>true</AllLocationFilters><CoordinateOptions><CoordinateSystem>Gse</CoordinateSystem><Component>X</Component></CoordinateOptions><CoordinateOptions><CoordinateSystem>Gse</CoordinateSystem><Component>Y</Component></CoordinateOptions><CoordinateOptions><CoordinateSystem>Gse</CoordinateSystem><Component>Z</Component></CoordinateOptions><MinMaxPoints>2</MinMaxPoints></OutputOptions></DataRequest>';
+                                       // part 3 of a DataRequest
+
+var sats = new Array();                // satellite descriptions sorted by 
+                                       // Name, indexed by Id, and with 
+                                       // duplicates (except for different 
+                                       // spase resource ids) removed
+var scene;                             // 3D scene graph depicting the
+                                       // satellite's trajectory
+var yawNode;
+var pitchNode;
+var earthRotationNode;
+
+var lastX;                             // last mouse/touch X position
+var lastY;                             // last mouse/touch Y position
+var dragging = false;
+
+var newInput = false;
+var yaw = 0;
+var pitch = 0;
+
+
+var canvas;
+
+
+function mouseDown(event) {
+    lastX = event.clientX;
+    lastY = event.clientY;
+    dragging = true;
+}
+
+function touchStart(event) {
+    lastX = event.targetTouches[0].clientX;
+    lastY = event.targetTouches[0].clientY;
+    dragging = true;
+}
+
+function mouseUp() {
+    dragging = false;
+}
+
+function touchEnd() {
+    dragging = false;
+}
+
+function mouseMove(event) {
+    var posX = event.clientX;
+    var posY = event.clientY;
+    actionMove(posX,posY);
+}
+
+function touchMove(event) {
+    var posX = event.targetTouches[0].clientX;
+    var posY = event.targetTouches[0].clientY;
+    actionMove(posX,posY);
+}
+
+function actionMove(posX, posY) {
+    if (dragging) {
+
+        yaw += (posX - lastX) * 0.5;
+        pitch += (posY - lastY) * 0.5;
+
+        lastX = posX;
+        lastY = posY;
+
+        newInput = true;
+    }
+}
+
+
+/**
+ * Displays the names of the given observatories for the user to select.
+ */
+function displayObservatories(observatories) {
+
+  // sort in ascending name order
+  observatories.Observatory.sort(function(a, b) {
+    if (a.Name < b.Name) {
+      return -1;
+    }
+    else if (a.Name > b.Name) {
+      return 1;
+    }
+    return 0;
+  });
+  // eliminate duplicates, save resulting descriptions in sats, and
+  // append an <option> element to <select> element
+  var lastName;                        // value of last name encountered
+  for (var i = 0; i < observatories.Observatory.length; i++) {
+
+    observ = observatories.Observatory[i];
+    if (lastName != observ.Name) {
+      sats[observ.Id] = observ;
+      if (observ.Id == 'cluster1') {
+
+        $("#satSel").append('<option value="' + observ.Id + '" title="' + 
+                            observ.StartTime + ' to ' + observ.EndTime + 
+                            '" selected="selected">' + observ.Name + 
+                            '</option>');
+      }
+      else {
+
+        $("#satSel").append('<option value="' + observ.Id + '" title="' + 
+                            observ.StartTime + ' to ' + observ.EndTime + 
+                            '">' + observ.Name + '</option>');
+      }
+    }
+    lastName = observ.Name;
+  }
+}
+
+/**
+ * Displays the data.
+ */
+function displayData(result) {
+
+  var statusCode = $(result).find('StatusCode').text();
+
+  if (statusCode != 'Success') {
+
+    alert('Request for information from SSC failed.');
+    return;
+  }
+
+  var trajectoryNodes = scene.findNodes('trajectory');
+                                       // existing trajectory nodes
+
+  for (var i = 0; i < trajectoryNodes.length; i++) {
+
+    if (trajectoryNodes[i] != null) {
+
+      trajectoryNodes[i].destroy();
+    }
+  }
+
+  $('#dataTable > tbody').empty();
+
+  $('Data', result).each(displaySatelliteTrajectory);
+
+  document.body.style.cursor = 'default';
+}
+
+
+var earthRadiusKm = 6378;              // Earth's radius in km
+
+/**
+ * Display the satellite's trajectory.
+ */
+function displaySatelliteTrajectory() {
+
+  var satId = $(this).find('Id').text();
+  var satName = sats[satId].Name;
+
+  var time = $(this).find('Time').map(function() {
+    return $(this).text();
+  }).get();
+  var x = $(this).find('X').map(function() {
+    return $(this).text() / earthRadiusKm;
+  }).get();
+  var y = $(this).find('Y').map(function() {
+    return $(this).text() / earthRadiusKm;
+  }).get();
+  var z = $(this).find('Z').map(function() {
+    return $(this).text() / earthRadiusKm;
+  }).get();
+
+  var trajectoryNode = {
+    type: "material",
+    baseColor: { r: 0.0, g: 1.0, b: 0.0},
+    emit: 0.5,
+
+    nodes: [
+      {
+        type: 'geometry',
+        primitive: 'line-strip',
+        id: 'trajectory.' + satId,
+        sid: satId,
+        positions: new Array(),
+        indices : new Array()
+      }
+    ]
+  }
+
+  for (var i = 0; i < time.length; i++) {
+
+      if (i == 0) {
+
+        $('#dataTable > tbody').append(
+            '<tr><td colspan="1" rowspan="' + time.length + 
+            '" style="vertical-align: top;">' + satName + '</td><td>' + 
+            time[i] + '</td><td>' + x[i] + '</td><td>' +
+            y[i] + '</td><td>' + z[i] + '</td></td');
+      }
+      else {
+
+        $('#dataTable > tbody').append(
+            '<tr><td>' + time[i] + '</td><td>' + x[i] + '</td><td>' +
+            y[i] + '</td><td>' + z[i] + '</td></td');
+      }
+      trajectoryNode.nodes[0].positions[3 * i] = x[i];
+      trajectoryNode.nodes[0].positions[3 * i + 1] = y[i];
+      trajectoryNode.nodes[0].positions[3 * i + 2] = z[i];
+      trajectoryNode.nodes[0].indices[i] = i; // 3 * i;
+  }
+
+  yawNode.add('node', trajectoryNode);
+
+}
+
+function createScene() {
+
+  var sceneGraph = {
+    id: "theScene",
+    canvasId: "theCanvas",
+    nodes: [
+      {
+        type: "lookAt",
+        eye: { x: 10.0, y: 10.0, z: 50.0},
+        look: { x: 0.0, y: 0.0, z: 0.0},
+        up: { y: 1.0},
+
+        nodes: [
+          {
+            type: "camera",
+            optics: {
+              type: "perspective",
+              fovy: 25.0,
+              aspect: 1.47,
+              near: 0.10,
+              far: 300.0
+            },
+            nodes: [
+              {
+                type: "renderer",
+                clearColor: { r: 0.0, g: 0.0, b: 0.0 },
+                lineWidth: 2,
+                clear: {
+                  depth : true,
+                  color : true
+                },
+                nodes: [
+                  {
+                    type: "rotate",
+                    id: "pitch",
+                    angle: 0.0,
+                    x: 1.0,
+                    nodes: [
+                      {
+                        type: "rotate",
+                        id: "yaw",
+                        angle: 0.0,
+                        y: 1.0,
+                          nodes: [
+                            {
+                              type: "light",
+                              id: "sun",
+                              mode: "dir",
+                              color: { r: 1.0, g: 1.0, b: 1.0},
+                              diffuse: true,
+                              specular: true,
+                              dir: { x: -1.0, y: 0.0, z: 0.0}
+                            },
+                            {
+                              type: "rotate",
+                              id: "earthRotation",
+                              angle: 0.0,
+                              z: 1,
+                              nodes: [
+                                {
+                                  type: "rotate",
+                                  id: "earthOrientation", 
+                                    // north is along Z axis (not Y)
+                                  angle: -90.0,
+                                  x: 1,
+                                  nodes: [
+                                    {
+                                      type: "texture",
+                                      layers: [
+                                        {
+                                          uri: "earth.jpg",
+                                          applyTo: "baseColor",
+                                          flipY: true,
+                                            // to correct for Y axis being 
+                                            // downward in jpeg
+                                        },
+                                      ],
+                                      nodes: [
+                                        {
+                                          type: "material",
+                                          baseColor: { r: 0.0, g: 0.0, b: 0.9 },
+                                          specular: 5,
+                                          emit: 0.6,
+                                          shine: 100,
+                                          nodes: [
+                                            {
+                                              type: "sphere",
+                                              id: "earth",
+                                              radius: 1
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                  ]
+                                },
+                              ]
+                            },
+                            {
+                              type: "material",
+                              baseColor: { r: 1.0, g: 0.0, b: 0.0 },
+                              emit: 0.5,
+                              nodes: [
+                                {
+                                  type: "geometry",
+                                  primitive: "lines",
+                                  id: "axis",
+                                  positions: [
+                                    0, 0, 0, 10, 0, 0,
+                                    0, 0, 0, 0, 10, 0,
+                                    0, 0, 0, 0, 0, 10
+                                  ],
+                                  indices : [ 0, 1, 2, 3, 4, 5 ]
+                                }
+                              ]
+                            },
+                          ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+
+  SceneJS.createScene(sceneGraph);
+
+  scene = SceneJS.scene('theScene');
+  yawNode = scene.findNode("yaw");
+  pitchNode = scene.findNode("pitch");
+  earthRotationNode = scene.findNode("earthRotation");
+
+  canvas = document.getElementById("theCanvas");
+
+  canvas.addEventListener('mousedown', mouseDown, true);
+  canvas.addEventListener('mousemove', mouseMove, true);
+  canvas.addEventListener('mouseup', mouseUp, true);
+  canvas.addEventListener('touchstart', touchStart, true);
+  canvas.addEventListener('touchmove', touchMove, true);
+  canvas.addEventListener('touchend', touchEnd, true);
+
+  /* Start the scene rendering
+   */
+  scene.start({
+      idleFunc: function() {
+          if (newInput) {
+              yawNode.set('angle', yaw);
+              pitchNode.set('angle', pitch);
+              newInput = false;
+          }
+          earthRotationNode.inc('angle', 0.3);
+      }
+  });
+}
+
+/**
+ * Called if the server returns an error for the requested data.
+ * Displays an alert describing the error to the user.
+ */
+function dataError(xmlHttpRequest, textStatus, errorThrown) {
+
+  document.body.style.cursor = 'default';
+
+  var errDoc = $.parseXML(xmlHttpRequest.responseText); 
+  /* errDoc contains xhtml that we might want to display.
+     Alternately, just display the Message and Description values. */
+
+  var msg = $(errDoc).find('.ErrorMessage').text();
+  var description = $(errDoc).find('.ErrorDescription').text();
+  
+  alert("Server request error:\n  HTTP error: " + errorThrown + 
+        "\n  " + msg + "\n  " + description);
+}
+
+/**
+ * Gets an ISO 8601 date/time value from the input date/time value.
+ */
+function getIso8601FromInput(value) {
+
+  var components = iso8601RegExp.exec(value);
+
+  for (var i = 0; i < components.length; i++) {
+
+    if (components[i] === undefined) {
+
+        components[i] = '00';
+    }
+  }
+
+  return components[1] + '-' + components[2] + '-' + components[3] + 'T' +
+         components[5] + ':' + components[7] + ':' + components[9] + '.000Z';
+}
+
+/**
+ * Gets the corresponding JS Date object for the given ISO 8601 date value.
+ */
+function getDateFromIso8601(iso8601Date) {
+  // Date.parse() does not handle ISO 8601 dates until ECMAScript 5
+
+  var components = iso8601RegExp.exec(iso8601Date);
+
+  for (var i = 0; i < components.length; i++) {
+
+    if (components[i] === undefined) {
+
+        components[i] = 0;
+    }
+  }
+
+  return new Date(Date.UTC(components[1], components[2] - 1, 
+                           components[3], components[5], 
+                           components[7], components[9], 
+                           components[11]));
+}
+
+/**
+ * Validates that the given start and end dates are within the range of
+ * valid dates for the given satellite.
+ */
+function validTimeRange(sat, startDate, endDate) {
+
+  var satStartDate = getDateFromIso8601(sat.StartTime);
+  var satEndDate = getDateFromIso8601(sat.EndTime);
+
+  if (startDate >= satStartDate && endDate <= satEndDate) {
+
+      return '';
+  }
+  else {
+
+      return 'Time range outside of data for ' + sat.Name +
+              '.\n\nIt must be within ' + sat.StartTime + '\nto ' + 
+              sat.EndTime + '.';
+  }
+}
+
+/**
+ * Performs final validation and constructs an XML DataRequest from the 
+ * user's input.  The XML request is used to make a web service request 
+ * to SSC to request the data.  The displayPlot function is registered 
+ * to handle the results.
+ */
+function requestData() {
+
+/* the following looses the case of the XML elements
+  var req = document.createDocumentFragment();
+  var graphReq = req.appendChild(document.createElement("GraphRequest"));
+  graphReq.setAttribute("xmlns", "http://sscweb.gsfc.nasa.gov/schema");
+  var timeInterval = document.createElement("TimeInterval");
+  ...
+  so the xml request is created with strings
+*/ 
+
+  var selectedSats = $('#satSel option:selected').map(
+    function(){ 
+      return this.value
+    }).get();
+
+  if (selectedSats.length == 0) {
+
+    alert('You must select at least one satellite');
+    return;
+  }
+
+  // FF 15 is allowing invalid times to get here so we must re-validate 
+  var iso8601Start = $('#startTime').val();
+
+  if (!iso8601RegExp.test(iso8601Start)) {
+
+    alert('Invalid Start Time');
+    return;
+  }
+  // make certain that it is a "full" iso 8601 time value
+  iso8601Start = getIso8601FromInput(iso8601Start);
+
+  var iso8601End = $('#stopTime').val();
+
+  if (!iso8601RegExp.test(iso8601End)) {
+
+    alert('Invalid Stop Time');
+    return;
+  }
+  iso8601End = getIso8601FromInput(iso8601End);
+
+  var startDate = getDateFromIso8601(iso8601Start);
+  var endDate = getDateFromIso8601(iso8601End);
+
+  if (startDate >= endDate) {
+
+    alert('Start Time must be less than Stop Time');
+    return;
+  }
+
+  var timeReqXml = '<TimeInterval><Start>' + iso8601Start +
+    '</Start><End>' + iso8601End + '</End></TimeInterval>';
+
+  var satReqXml = '';
+  for (var i = 0; i < selectedSats.length; i++) {
+
+    var satId = selectedSats[i];
+    var sat = sats[satId];
+
+    var invalid = validTimeRange(sat, startDate, endDate);
+
+    if (invalid.length > 0) {
+
+        alert(invalid);
+        return;
+    }
+    satReqXml += '<Satellites><Id>' + satId + '</Id>' +
+                     '<ResolutionFactor>2</ResolutionFactor></Satellites>';
+  }
+
+  var request = dataReqXml1 + timeReqXml + dataReqXml2 + satReqXml + 
+                dataReqXml3;
+
+  document.body.style.cursor = 'wait';
+
+  $.ajax({
+      type: 'POST',
+      url: sscUrl + '/locations', 
+      data: request,
+      dataType: 'xml',
+      contentType: 'application/xml',
+      processData: false,
+      success: displayData, 
+      error: dataError
+  });
+
+}
+
+/**
+ * Called when the browser finished construction the DOM.  It makes an
+ * SSC web service call to get the available observatories.  The
+ * displayObservatories function is registered to handle the results
+ * of web service call.
+ */
+$(document).ready(function(){
+  $('#dataTableVisibility').click(function(){
+    $('#data').toggle();
+  });
+  if (!window.WebGLRenderingContext) {
+    alert('This example requires a browser that support WebGL.');
+    window.location = 'http://get.webgl.org';
+  }
+  else {
+    try {
+      createScene();
+    }
+    catch (e) {
+      if ($.browser.safari) {
+        alert('It appears as if your browser supports WebGL but \n' +
+              'it is disabled.  To enable it in Safari, open\n' +
+              '"Preferences/Advanced" and select the\n' +
+              '"Show Develop menu".  Then close the Preferences\n' +
+              'window and choose the\n' +
+              '"Develop/Enable WebGL" menu option.');
+        return;
+      }
+      else {
+        alert('This example requires WebGL which your browser seems ' +
+            'to support.\n  However, there may be a configuration ' +
+            'error.\nError message: ' + e.message);
+        window.location = 'http://get.webgl.org/troubleshooting';
+      }
+    }
+  }
+  $.get(sscUrl + '/observatories', displayObservatories, 'json');
+});
+</script>
+
+</head><body>
+<h2 style="text-align: center;">
+jQuery Examples of using the SSC Web Services
+</h2>
+
+<div id="notes" style="border: 1px solid; margin:10px; padding:5px; color: #00529B; background-color: #BDE5F8;">
+<p>This page demonstrates using 
+<a href="http://jquery.com/" target="_blank">jQuery</a>
+<a href="http://api.jquery.com/category/ajax/" target="_blank">.ajax()</a>
+to access the 
+<a href="http://sscweb.gsfc.nasa.gov/WebServices/REST/" target="_blank">
+SSC Web Services</a>.  This example uses
+<a href="http://scenejs.org/">SceneJS</a> and
+<a href="http://en.wikipedia.org/wiki/WebGL">WebGL</a> to display an 
+interactive, 3-Dimensional representation of the
+satellite trajectory information obtained from SSC.
+This page is not intended to be an end-user
+application.  It is intended to show web client developers how they could
+use the SSC web services in their own 
+<a href="http://en.wikipedia.org/wiki/Javascript" target="_blank">JavaScript</a>
+ clients.</p>
+</div>
+
+<div id="errDialog" title="Server Error Message">
+</div>
+
+<form>
+<div id="satellites" style="width:35%;padding:10px;border:5px solid blue;margin:10px;float:left;">
+  <h4>Satellites</h4>
+  <select id="satSel" size="15" multiple="multiple">
+  <option value="ace" title="1997-08-26T00:00:00Z to 2013-11-25T12:35:59Z">ACE</option><option value="aim" title="2007-04-25T00:00:00Z to 2013-12-15T00:00:00Z">AIM</option><option value="apex" title="1991-12-17T00:00:00Z to 2004-05-01T00:00:00Z">APEX-MAIN</option><option value="ariel4" title="1972-01-16T00:00:00Z to 1978-11-26T00:00:00Z">ARIEL-4</option><option value="artemisp1" title="2007-02-18T00:13:59Z to 2013-11-23T23:58:59Z">ARTEMIS_P1</option><option value="artemisp1pred" title="2008-07-18T00:30:00Z to 2014-12-30T00:00:00Z">ARTEMIS_P1 (Pred)</option><option value="artemisp2" title="2007-02-18T00:13:59Z to 2013-11-24T23:58:59Z">ARTEMIS_P2</option><option value="artemisp2pred" title="2008-07-18T00:30:00Z to 2014-12-30T00:00:00Z">ARTEMIS_P2 (Pred)</option><option value="astrid2" title="1998-12-12T00:00:00Z to 2002-04-03T00:00:00Z">ASTRID II</option><option value="active" title="1989-09-29T00:00:00Z to 1991-10-04T08:00:00Z">Active</option><option value="akebono" title="1989-02-23T00:00:00Z to 2013-12-15T00:00:00Z">Akebono</option><option value="alouette1" title="1965-01-01T00:00:00Z to 1972-09-25T00:00:00Z">Alouette-1</option><option value="alouette2" title="1966-01-27T00:00:00Z to 1975-07-31T00:00:00Z">Alouette-2</option><option value="aqua" title="2002-05-04T00:00:00Z to 2013-12-15T00:00:00Z">Aqua</option><option value="aura" title="2004-07-15T00:00:00Z to 2013-12-15T00:00:00Z">Aura</option><option value="cnofs" title="2008-04-18T00:00:00Z to 2014-03-24T00:00:00Z">C/NOFS</option><option value="calipso" title="2006-04-28T00:00:00Z to 2013-12-15T00:00:00Z">CALIPSO</option><option value="cce" title="1984-08-16T15:55:00Z to 1989-08-01T00:04:59Z">CCE (AMPTE/CCE)</option><option value="cceold" title="1984-08-17T00:00:00Z to 1988-01-01T08:00:00Z">CCE (AMPTE/CCE) (superceded)</option><option value="champ" title="2000-11-09T00:00:00Z to 2010-10-10T00:00:00Z">CHAMP</option><option value="crres" title="1990-07-25T23:00:00Z to 1991-12-04T08:00:00Z">CRRES</option><option value="csswe" title="2012-10-06T14:58:00Z to 2013-12-04T00:00:00Z">CSSWE</option><option value="chandra" title="1999-10-31T00:00:00Z to 2013-07-02T00:00:00Z">Chandra</option><option value="chibism" title="2012-01-26T00:00:00Z to 2013-12-16T00:00:00Z">Chibis-M</option><option value="cloudsat" title="2006-05-05T00:00:00Z to 2013-12-15T00:00:00Z">Cloudsat</option><option value="cluster1" title="2000-08-23T00:00:29Z to 2017-01-02T04:59:30Z" selected="selected">Cluster-1 (FM5/Rumba)</option><option value="cluster2" title="2000-08-23T00:00:29Z to 2017-01-02T04:59:30Z">Cluster-2 (FM6/Salsa)</option><option value="cluster3" title="2000-08-23T00:00:29Z to 2017-01-02T04:59:30Z">Cluster-3 (FM7/Samba)</option><option value="cluster4" title="2000-08-23T00:00:29Z to 2017-01-02T04:59:30Z">Cluster-4 (FM8/Tango)</option><option value="de1" title="1981-08-03T10:37:59Z to 1991-03-02T08:00:00Z">DE-1</option><option value="de2" title="1981-08-04T00:00:00Z to 1983-02-19T12:19:00Z">DE-2</option><option value="demeter" title="2004-07-08T00:00:00Z to 2009-11-24T00:00:00Z">DEMETER</option><option value="dmea" title="1966-04-10T00:00:00Z to 1969-07-01T00:00:00Z">DME-A</option><option value="dmspf10" title="1990-12-02T00:00:00Z to 1999-09-12T00:00:00Z">DMSP-10</option><option value="dmspf11" title="1991-11-29T00:00:00Z to 2003-09-09T00:00:00Z">DMSP-11</option><option value="dmspf12" title="1994-09-16T00:00:00Z to 2003-09-09T00:00:00Z">DMSP-12</option><option value="dmspf13" title="1995-04-13T00:00:00Z to 2010-05-08T00:00:00Z">DMSP-13</option><option value="dmspf14" title="1997-04-20T00:00:00Z to 2010-11-13T00:00:00Z">DMSP-14</option><option value="dmspf15" title="1999-12-13T00:00:00Z to 2013-09-28T00:00:00Z">DMSP-15</option><option value="dmspf16" title="2003-10-18T00:00:00Z to 2013-09-28T00:00:00Z">DMSP-16</option><option value="dmspf17" title="2006-11-05T16:30:00Z to 2013-09-28T00:00:00Z">DMSP-17</option><option value="dmspf18" title="2009-10-22T00:00:00Z to 2013-09-28T00:00:00Z">DMSP-18</option><option value="dmspf8" title="1990-01-01T00:00:00Z to 1994-09-13T08:00:00Z">DMSP-8</option><option value="dmspf9" title="1990-01-01T00:00:00Z to 1992-11-01T08:00:00Z">DMSP-9</option><option value="doublestar1" title="2004-01-03T07:05:59Z to 2007-10-10T12:37:00Z">Double Star-1</option><option value="doublestar2" title="2004-09-16T23:53:59Z to 2009-12-31T23:58:59Z">Double Star-2</option><option value="equators" title="1997-12-12T16:00:00Z to 1998-09-24T08:00:00Z">Equator-S</option><option value="explorer45" title="1971-11-22T00:00:00Z to 1974-01-31T00:00:00Z">Explorer-45</option><option value="fast" title="1996-08-22T00:00:00Z to 2013-12-16T00:00:00Z">FAST</option><option value="freja" title="1992-10-07T00:00:00Z to 2000-05-11T00:00:00Z">Freja</option><option value="gcomw1" title="2012-05-17T00:00:00Z to 2013-12-15T00:00:00Z">GCOM-W1</option><option value="gms3" title="1986-03-25T00:00:00Z to 1986-07-01T00:00:00Z">GMS-3</option><option value="goes10" title="1998-06-18T00:00:00Z to 2009-12-05T00:00:00Z">GOES-10</option><option value="goes11" title="2000-05-17T00:00:00Z to 2013-12-15T00:00:00Z">GOES-11</option><option value="goes12" title="2002-08-15T00:00:00Z to 2013-12-15T00:00:00Z">GOES-12</option><option value="goes13" title="2006-06-10T00:00:00Z to 2013-12-15T00:00:00Z">GOES-13</option><option value="goes14" title="2009-07-09T00:00:00Z to 2013-12-14T00:00:00Z">GOES-14</option><option value="goes15" title="2010-06-19T00:00:00Z to 2013-12-13T00:00:00Z">GOES-15</option><option value="goes6" title="1993-12-01T00:00:00Z to 1995-05-01T08:00:00Z">GOES-6</option><option value="goes7" title="1987-04-15T00:00:00Z to 1998-12-02T00:00:00Z">GOES-7</option><option value="goes8" title="1994-07-22T00:00:00Z to 2004-05-01T00:00:00Z">GOES-8</option><option value="goes9" title="1995-07-29T00:00:00Z to 2006-01-01T00:00:00Z">GOES-9</option><option value="gosat" title="2009-01-30T00:00:00Z to 2013-12-16T00:00:00Z">GOSAT</option><option value="grace1" title="2002-03-31T00:00:00Z to 2013-12-15T00:00:00Z">GRACE-1</option><option value="grace2" title="2002-03-31T00:00:00Z to 2013-12-14T00:00:00Z">GRACE-2</option><option value="genesis" title="2001-08-12T00:00:00Z to 2004-09-07T23:00:00Z">Genesis</option><option value="geotail" title="1992-07-26T00:00:00Z to 2013-12-01T23:48:00Z">Geotail</option><option value="hawkeye" title="1974-06-09T00:00:00Z to 1978-01-01T08:00:00Z">Hawkeye</option><option value="hinode" title="2006-09-23T00:10:00Z to 2013-12-15T00:00:00Z">Hinode</option><option value="image" title="2000-03-27T00:00:55Z to 2006-07-31T22:37:59Z">IMAGE</option><option value="imp7" title="1972-09-26T00:00:00Z to 1978-10-01T00:00:00Z">IMP-7</option><option value="imp8" title="1973-10-30T00:00:00Z to 2010-01-01T00:00:00Z">IMP-8</option><option value="irm" title="1984-09-12T00:00:00Z to 1986-08-30T08:00:00Z">IRM (AMPTE/IRM)</option><option value="isee1" title="1977-10-22T14:49:00Z to 1987-09-26T05:58:59Z">ISEE-1</option><option value="isee1old" title="1977-10-23T00:00:00Z to 1987-09-26T06:35:59Z">ISEE-1 (superceded)</option><option value="isee2" title="1977-10-22T14:49:00Z to 1987-09-26T05:58:59Z">ISEE-2</option><option value="isee3" title="1978-08-16T03:43:59Z to 2014-08-11T23:36:00Z">ISEE-3</option><option value="isis1" title="1969-01-30T00:00:00Z to 1990-01-30T00:00:00Z">ISIS-1</option><option value="isis2" title="1971-04-10T00:00:00Z to 1990-01-30T00:00:00Z">ISIS-2</option><option value="iss" title="1998-11-21T00:00:00Z to 2013-12-16T00:00:00Z">ISS</option><option value="issb" title="1978-02-19T00:00:00Z to 1983-11-16T00:00:00Z">ISS-b</option><option value="interballtail" title="1995-08-04T00:00:00Z to 2000-10-10T08:00:00Z">Interball-1 (Tail)</option><option value="interballaurora" title="1996-09-02T00:00:00Z to 1999-07-15T08:00:00Z">Interball-2 (Auroral Probe)</option><option value="jason2" title="2008-07-08T00:00:00Z to 2013-12-16T00:00:00Z">JASON2</option><option value="juno" title="2013-08-01T01:01:00Z to 2013-10-30T23:58:00Z">Juno</option><option value="lanl01" title="2001-05-02T02:00:00Z to 2008-01-03T17:00:00Z">LANL-01</option><option value="lanl02" title="2003-10-01T02:00:00Z to 2008-01-03T17:00:00Z">LANL-02</option><option value="lanl89" title="1993-03-15T00:00:00Z to 2008-01-03T17:00:00Z">LANL-89</option><option value="lanl90" title="1994-05-20T00:00:00Z to 2005-11-10T00:00:00Z">LANL-90</option><option value="lanl91" title="1993-10-27T02:00:00Z to 2004-11-19T00:00:00Z">LANL-91</option><option value="lanl94" title="1996-01-01T00:00:00Z to 2008-01-03T17:00:00Z">LANL-94</option><option value="lanl97" title="1997-07-04T23:00:00Z to 2008-01-03T17:00:00Z">LANL-97</option><option value="mir" title="1995-07-26T00:00:00Z to 2000-11-29T00:00:00Z">MIR</option><option value="msx" title="1996-04-25T00:00:00Z to 1999-03-04T00:00:00Z">MSX</option><option value="microlab1" title="2000-01-01T00:00:00Z to 2005-04-30T00:00:00Z">Microlab1</option><option value="moon" title="1959-01-01T00:00:00Z to 2017-08-21T23:58:00Z">Moon</option><option value="noaa10" title="1986-09-27T00:00:00Z to 1991-09-27T00:00:00Z">NOAA-10</option><option value="noaa12" title="1991-05-16T00:00:00Z to 1998-05-02T00:00:00Z">NOAA-12</option><option value="noaa14" title="1995-01-14T00:00:00Z to 2004-05-01T00:00:00Z">NOAA-14</option><option value="noaa15" title="1998-05-26T00:00:00Z to 2013-12-15T00:00:00Z">NOAA-15</option><option value="noaa16" title="2000-09-27T00:00:00Z to 2013-12-15T00:00:00Z">NOAA-16</option><option value="noaa17" title="2002-06-25T00:00:00Z to 2013-12-15T00:00:00Z">NOAA-17</option><option value="noaa18" title="2005-07-03T00:00:00Z to 2013-12-15T00:00:00Z">NOAA-18</option><option value="noaa19" title="2009-02-06T21:37:00Z to 2013-12-15T00:00:00Z">NOAA-19</option><option value="noaa5" title="1976-07-31T00:00:00Z to 1980-06-28T00:00:00Z">NOAA-5</option><option value="noaa6" title="1979-10-05T00:00:00Z to 1986-08-09T00:00:00Z">NOAA-6</option><option value="noaa7" title="1981-10-01T00:00:00Z to 1986-06-29T00:00:00Z">NOAA-7</option><option value="noaa8" title="1983-03-28T00:00:00Z to 1985-10-27T00:00:00Z">NOAA-8</option><option value="ogo5" title="1969-04-09T00:00:00Z to 1971-05-10T00:00:00Z">OGO-5</option><option value="ogo6" title="1969-06-05T00:00:00Z to 1970-01-01T08:00:00Z">OGO-6</option><option value="oersted" title="1999-05-15T00:00:00Z to 2013-12-15T00:00:00Z">Oersted</option><option value="ohzora" title="1984-02-20T00:00:00Z to 1986-04-12T08:00:00Z">Ohzora</option><option value="parasol" title="2004-12-19T00:00:00Z to 2013-12-15T00:00:00Z">PARASOL</option><option value="polar" title="1996-03-01T00:00:00Z to 2009-06-27T00:00:00Z">Polar</option><option value="rbspa" title="2012-08-30T09:25:59Z to 2014-01-10T23:58:59Z">RBSP-A</option><option value="rbspapred" title="2012-08-23T09:28:00Z to 2014-10-23T23:58:59Z">RBSP-A Test</option><option value="rbspb" title="2012-08-30T09:25:59Z to 2014-01-10T23:58:59Z">RBSP-B</option><option value="rbspbpred" title="2012-08-23T09:40:59Z to 2014-10-23T23:58:59Z">RBSP-B Test</option><option value="rhessi" title="2002-02-05T00:00:00Z to 2013-12-15T00:00:00Z">RHESSI</option><option value="rocsat1" title="1999-03-31T00:00:00Z to 2004-06-13T00:00:00Z">ROCSAT1</option><option value="reimei" title="2005-08-25T00:00:00Z to 2013-12-16T00:00:00Z">Reimei</option><option value="rosetta" title="2007-11-12T00:00:00Z to 2009-11-14T18:00:00Z">Rosetta</option><option value="sampex" title="1992-07-04T00:00:00Z to 2012-11-12T00:00:00Z">SAMPEX</option><option value="scatha" title="1979-02-05T00:00:00Z to 1991-01-01T08:00:00Z">SCATHA</option><option value="snoe" title="1998-02-27T00:00:00Z to 2004-05-01T00:00:00Z">SNOE</option><option value="soho" title="1995-12-05T00:00:00Z to 2012-12-31T23:35:58Z">SOHO</option><option value="st5a" title="2006-03-23T00:00:00Z to 2006-08-28T00:00:00Z">ST5-A</option><option value="st5b" title="2006-03-23T00:00:00Z to 2006-08-29T00:00:00Z">ST5-B</option><option value="st5c" title="2006-03-23T00:00:00Z to 2006-08-29T00:00:00Z">ST5-C</option><option value="stereoa" title="2006-10-27T00:00:00Z to 2013-09-06T23:36:00Z">STEREO-Ahead</option><option value="stereob" title="2006-10-27T00:00:00Z to 2013-09-10T23:36:00Z">STEREO-Behind</option><option value="sputnik1" title="1957-10-04T00:00:00Z to 1957-10-31T00:00:00Z">Sputnik 1</option><option value="themisa" title="2007-02-18T00:13:59Z to 2013-11-24T23:58:59Z">THEMIS-A (P5)</option><option value="themisapred" title="2008-07-18T00:30:00Z to 2017-09-06T00:00:00Z">THEMIS-A (Pred)</option><option value="themisb" title="2007-02-18T00:13:59Z to 2013-11-23T23:58:59Z">THEMIS-B (P1)</option><option value="themisbpred" title="2008-07-18T00:30:00Z to 2014-12-30T00:00:00Z">THEMIS-B (Pred)</option><option value="themisc" title="2007-02-18T00:13:59Z to 2013-11-24T23:58:59Z">THEMIS-C (P2)</option><option value="themiscpred" title="2008-07-18T00:30:00Z to 2014-12-30T00:00:00Z">THEMIS-C (Pred)</option><option value="themisd" title="2007-02-18T00:13:59Z to 2013-11-24T23:58:59Z">THEMIS-D (P3)</option><option value="themisdpred" title="2008-07-18T00:30:00Z to 2017-09-06T00:00:00Z">THEMIS-D (Pred)</option><option value="themise" title="2007-02-18T00:13:59Z to 2013-11-24T23:58:59Z">THEMIS-E (P4)</option><option value="themisepred" title="2008-07-18T00:30:00Z to 2017-09-06T00:00:00Z">THEMIS-E (Pred)</option><option value="timed" title="2002-02-07T00:00:00Z to 2013-12-15T00:00:00Z">TIMED</option><option value="trace" title="1998-04-02T00:00:00Z to 2010-10-19T00:00:00Z">TRACE</option><option value="tatiana1" title="2005-01-25T00:00:00Z to 2007-03-30T00:00:00Z">Tatiana1</option><option value="tatiana2" title="2009-09-17T00:00:00Z to 2010-07-13T00:00:00Z">Tatiana2</option><option value="twins1" title="2007-04-01T00:02:30Z to 2013-11-15T23:58:30Z">Twins1</option><option value="twins2" title="2008-04-11T00:16:30Z to 2013-11-15T23:58:30Z">Twins2</option><option value="uars" title="1991-09-20T00:00:00Z to 2006-05-11T00:00:00Z">UARS</option><option value="viking" title="1986-03-05T00:00:00Z to 1987-01-01T00:00:00Z">Viking</option><option value="wind" title="1994-11-16T00:00:00Z to 2013-12-09T23:48:00Z">Wind</option><option value="yohkoh" title="1991-09-05T00:00:00Z to 1998-01-02T00:00:00Z">Yohkoh (Solar-A)</option></select>
+</div>
+
+<div style="width:30%;float:left;">
+
+<div id="time" style="width:100%;padding:10px;border:5px solid blue;margin:10px;">
+  <h4>Time</h4>
+    <label for="startTime">Start Time</label>
+    <input id="startTime" type="text" name="startTime" size="23" value="2012-01-01 20:00:00" required="required" pattern="\d{4}-\d{2}-\d{2}((( \d{2})?(:\d{2})?)?(:\d{2})?)?" title="yyyy-mm-dd[ hh[:mm[:ss]]]"><br>
+    <label for="stopTime">Stop Time</label>
+    <input id="stopTime" type="text" name="stopTime" size="23" value="2012-01-02 00:00:00" required="required" pattern="\d{4}-\d{2}-\d{2}((( \d{2})?(:\d{2})?)?(:\d{2})?)?" title="yyyy-mm-dd[ hh[:mm[:ss]]]">
+</div>
+
+<div id="request" style="clear:both">
+<p></p>
+  <input id="requestButton" type="button" value="Plot" onclick="requestData()">
+</div>
+</div>
+</form>
+<br><br>
+
+<div id="content" style="clear:both">
+  <canvas id="theCanvas" width="900" height="700">
+     <p>This example requires a browser that supports the
+         <a href="http://www.w3.org/html/wg/html5/">HTML5</a>
+         &lt;canvas&gt; feature.</p>
+  </canvas>
+</div>
+<br><br>
+
+<input id="dataTableVisibility" type="button" value="Show/Hide Table">
+<br><br>
+<div id="data">
+  <table id="dataTable" style="width: 50%; text-align: left;" border="1" cellpadding="2" cellspacing="2">
+    <thead>
+      <tr><th>Satellite</th><th>Time</th><th>X</th><th>Y</th><th>Z</th></tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+</div>
+
+
+
+<div id="window-resizer-tooltip"><a href="http://sscweb.gsfc.nasa.gov/WebServices/REST/jQueryExample2.html#" title="Edit settings" style="background-image: url(chrome-extension://kkelicaakdanhinjdeammmilcgefonfh/images/icon_19.png);"></a><span class="tooltipTitle">Window size: </span><span class="tooltipWidth" id="winWidth"></span> x <span class="tooltipHeight" id="winHeight"></span><br><span class="tooltipTitle">Viewport size: </span><span class="tooltipWidth" id="vpWidth"></span> x <span class="tooltipHeight" id="vpHeight"></span></div></body></html>
