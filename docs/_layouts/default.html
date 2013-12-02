@@ -16,7 +16,15 @@
     <body>
 		{{ site.baseurl }}
 		
-        <div class="site">
+		<h1>Blog Posts</h1>
+	  <ul class="posts">
+	    {% for post in site.posts %}
+	      <li><span>{{ post.date | date_to_string }}</span> &raquo; <a href="{{ post.url }}">{{ post.title }}</a></li>
+	    {% endfor %}
+	  </ul>
+	
+	
+        <!-- <div class="site">
           <div class="header">
             <h1 class="title"><a href="/">{{ site.name }}</a></h1>
             <a class="extra" href="/">home</a>
@@ -39,7 +47,7 @@
               </p>
             </div>
           </div>
-        </div>
+        </div> -->
 
     </body>
 </html>
