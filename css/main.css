@@ -4,6 +4,17 @@
 /*
 /*****************************************************************************/
 
+/* Custom */
+
+#title {
+    font-size:18px;
+    font-weight:bold;
+}
+
+#date {
+    font-size:10px;
+    color:#b7b7b7;
+}
 /* Global Reset */
 * {
   margin: 0;

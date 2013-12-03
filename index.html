@@ -4,10 +4,10 @@ title: Progress Update
 ---
 
 <div id="home">
-  <h1>Progress Updates</h1>
   <ul class="posts">
+
     {% for post in site.posts %}
-	<li><h1> {{ post.date }} {{ post.title }}</h1>{{ post.content }}<hr></li>
+	<li><div id="title">{{ post.title }}</div> <div id="date">{{ post.date }}</div>{{ post.content }}</li>
     {% endfor %}
   </ul>
 </div>
