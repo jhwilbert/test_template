@@ -82,6 +82,10 @@ a:visited { color: #a0a; }
   line-height: 1.5em;
 }
 
+.header {
+    background:#f7f7f7;
+}
+
 .header a {
   font-weight: bold;
   text-decoration: none;
