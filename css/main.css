@@ -19,6 +19,7 @@
     width:100%;
     height:20px;
     background:#ececec;
+    float:left;
 }
 /* Global Reset */
 * {
