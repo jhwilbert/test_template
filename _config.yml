@@ -1,4 +1,4 @@
-name: Template Test
+name: Process Updates
 markdown: redcarpet
 pygments: true
 baseurl: /test_template

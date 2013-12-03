@@ -82,9 +82,6 @@ a:visited { color: #a0a; }
   line-height: 1.5em;
 }
 
-.header {
-    background:#f7f7f7;
-}
 
 .header a {
   font-weight: bold;
@@ -92,6 +89,7 @@ a:visited { color: #a0a; }
 }
 
 .title {
+  font-size:20px;
   display: inline-block;
   margin-bottom: 2em;
 }
